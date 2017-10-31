@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Test Socket Cluster</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/15.3.1/react.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/15.3.1/react-dom.js"></script>
+
+    <script src="https://unpkg.com/babel-standalone@6.15.0/babel.min.js"></script>
+
+    <script src="./node_modules/socketcluster-client/socketcluster.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<div id="mount-point"></div>
+
+<div id="div_insert_data"></div>
+<div id="div_update_data"></div>
+
+
+<div id="label-mount-point"></div>
+
+<div id="label-total-input"></div>
+
+<div id="div_random"></div>
+
+<div id="button_org_all"></div>
+<div id="button_by_id"></div>
+<div id="button_delete_by_id"></div>
+
+<div id="list_org"></div>
+
+
+<script type="text/babel">
+    var update_now = false;
+
+    function Edit(org_id) {
+        console.log(org_id);
+        socket.emit('org_getById', { org_id: org_id } );
+        update_now = true;
+    }
+
+    var options = {
+        /*protocol: 'https', */
+        hostname: '192.168.99.100',
+        port: 3001
+    };
+
+    // Initiate the connection to the server
+    var socket = socketCluster.connect(options);
+    socket.on('connect', function () {
+        console.log('CONNECTED');
+    });
+
+    // We subscribe to get from exchange puslisher from server
+    var sampleChannel = socket.subscribe('sample');
+
+    sampleChannel.watch(function (count) {
+        document.getElementById('label-total-input').innerHTML = 'Total is' + count;
+    });
+
+    // Listen to an event called 'rand' from the server
+    socket.on('rand', function (num) {
+        document.getElementById('div_random').innerHTML = num.rand;
+    });
+
+    socket.on('org_getAll_return', function(value) {
+        var orgData = value.data.data;
+        var list_data = "<ul>";
+
+        for(var i=0; i < orgData.length; i++)
+        {
+            var item = orgData[i];
+            var button_click = "<button onclick=Edit('" + item.id + "')>Edit</button>" ;
+            list_data += "<li>" + item.id + " - " + item.name + button_click + "</li>";
+        }
+        list_data += "</ul>";
+
+        document.getElementById('list_org').innerHTML = list_data;
+    });
+
+    socket.on('org_getById_return', function(value) {
+        var item = value.data.data;
+        if(update_now == true) {
+            document.getElementById('txt_org_id_update').value = item.id;
+            document.getElementById('txt_org_name_update').value = item.name;
+            update_now = false;
+        } else {
+            var list_data = "<ul>";
+
+            list_data += "<li>" + item.id + " - " + item.name + "</li>";
+
+            list_data += "</ul>";
+
+            document.getElementById('list_org').innerHTML = list_data;
+        }
+
+
+    });
+
+    socket.on('org_deleteById_return', function(value) {
+        console.log(value);
+        if(value.data.code == 1) {
+            alert("Deleted");
+            socket.emit('org_selectAll');
+        } else {
+            alert(value.data.message);
+            console.log(value.data.err_data);
+        }
+    });
+
+    socket.on('org_add_return', function(value) {
+        alert("Insert - DONE");
+        socket.emit('org_selectAll');
+    });
+
+    socket.on('org_updateById_return', function(value) {
+        alert("Updated - DONE");
+        socket.emit('org_selectAll');
+    });
+
+    class DivInsertData extends React.Component {
+        _InsertOrg() {
+            var org_name = document.getElementById("txt_org_name").value;
+            socket.emit('org_add', { name: org_name } );
+        }
+
+        render() {
+            return  <div>
+                        <input type="text" id="txt_org_name" placeholder="Input Org Name"/>
+                        <button onClick={this._InsertOrg}>Insert Org</button>
+                    </div>
+        }
+    }
+
+    class DivUpdateData extends React.Component {
+        _UpdateOrg() {
+            var org_id = document.getElementById("txt_org_id_update").value;
+            var org_name = document.getElementById("txt_org_name_update").value;
+            socket.emit('org_updateById', { org_id: org_id, data_update: {name: org_name} } );
+        }
+
+        render() {
+            return  <div>
+                        <input type="hidden" id="txt_org_id_update" />
+                        <input type="text" id="txt_org_name_update" placeholder="Input Org Name"/>
+                        <button onClick={this._UpdateOrg}>Update Org</button>
+                    </div>
+        }
+    }
+
+    class ButtonGetAllOrg extends React.Component {
+        _getAllOrg() {
+            socket.emit('org_selectAll');
+        }
+
+        render() {
+            return <button onClick={this._getAllOrg}>Get All Org</button>
+        }
+    }
+
+    class ButtonGetById extends React.Component {
+        _getById() {
+            var org_id = document.getElementById("txtOrgId").value;
+            socket.emit('org_getById', { org_id: org_id } );
+        }
+
+        render() {
+            return <button onClick={this._getById}>Get By Id</button>
+        }
+    }
+
+    class ButtonDeleteById extends React.Component {
+        _getById() {
+            var org_id = document.getElementById("txtOrgId").value;
+            socket.emit('org_deleteById', { org_id: org_id } );
+        }
+
+        render() {
+            return <button onClick={this._getById}>Delete By Id</button>
+        }
+    }
+
+    class Input extends React.Component {
+        _notifyServer(event) {
+            socket.emit('sampleClientEvent', { value: event.target.value });
+        }
+
+        render() {
+            return <div className="update-label">
+                        Organisation ID:
+                        <input type="text" id="txtOrgId" placeholder="Enter text" onChange={this._notifyServer}/>
+                    </div>;
+        }
+    }
+
+    class Label extends React.Component {
+        _onUpdateLabel(data) {
+            console.log(data.value);
+            this.setState({serverValue: data.value});
+        }
+
+        render(){
+            return  <div className="my-label">
+                        <h2>{this.props.serverValue}</h2>
+                    </div>
+        }
+
+    }
+
+
+    var input = ReactDOM.render(<Input />, document.getElementById('mount-point'));
+    var label = ReactDOM.render(<Label/>, document.getElementById('label-mount-point'));
+    var button_all = ReactDOM.render(<ButtonGetAllOrg />,  document.getElementById('button_org_all'));
+    var button_id = ReactDOM.render(<ButtonGetById />,  document.getElementById('button_by_id'));
+    var button_delete = ReactDOM.render(<ButtonDeleteById />,  document.getElementById('button_delete_by_id'));
+    var div_i_data = ReactDOM.render(<DivInsertData />, document.getElementById('div_insert_data'));
+    var div_u_data = ReactDOM.render(<DivUpdateData />, document.getElementById('div_update_data'));
+
+    socket.on('update label', function (data) {
+        label._onUpdateLabel(data);
+    });
+</script>
+</body>
+</html>
